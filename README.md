@@ -50,7 +50,7 @@ Another application is combining a shuffle pattern like `shuffle16(x, IDX1) ^ sh
 | `BMAC#(0, x1, y) ⊕ BMAC#(0, x2, y)` | `BMAC#(0, x1 ⊕ x2, y)` |
 | `BMAC#(0, x, y1) ⊕ BMAC#(0, x, y2)` | `BMAC#(0, x, y1 ⊕ y2)` |
 | `BMAC#(0, BMAC#(0, x, y1), y2)` | `BMAC#(0, x, f(y1, y2))` |
-| `shuffle16(x, idx)` | `BMAC#(0, x, exp2(idx))` |
+| `shuffle16(x, idx)` | `BMAC#(0, exp2(idx), x)` |
 | `reduce16#(x)` | `BMAC#(0, scalar(0xffff), x)` |
 | `GF2P8AFFINEQB(x, y, imm8)` | `BMACXOR(splat8(imm8), x, f(y))` |
 
