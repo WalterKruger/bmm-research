@@ -9,7 +9,7 @@ There also exists the bit reversal within a byte boundary instruction `VBITREV`.
 The bit matrix multiples are very interesting. There are two variations `VBMACOR16X16X16` and `VBMACXOR16X16X16`, each of which are finite field-like matrix multiplies and accumulates (addition). The XOR version is very similar to the GFNI instruction `GF2P8AFFINEQB` but instead operates at a 16-bit granularity, is column-major ordered, and have a variable vector operand as the accumulator. There are multiple different ways of interpreting what they do, each of which is useful for a different application:
 
 ## Linear algebra interpretation
-It performs a matrix multiply between each 16-bit elements in the second operand (interpreted as a 16 by 1-bit column matrix) and the corresponding 256 lane in the third (a column-major 16 by 16-bit matrix), which produces intermediate 16-bit products. Instead of a regular multiply, this is instead done through "carryless" (or modular 1-bit) arithmetic for the XOR version, or boolean algebra (or 1-bit saturation arithmetic) for the OR. The first operand is treated as an addended, which is applied to the product using the same arithmetic structure as the multiply.
+It performs a matrix multiply between each 16-bit elements in the second operand (interpreted as a 16 by 1-bit column matrix) and the corresponding 256 lane in the third (a column-major 16 by 16-bit matrix), which produces intermediate 16-bit products. Instead of a regular multiply, this is instead done through "carryless" (or modular 1-bit) arithmetic for the XOR version, or boolean algebra (or 1-bit saturation arithmetic) for the OR. The first operand is treated as an addend, which is applied to the product using the same arithmetic structure as the multiply.
 
 Keep in mind that this is a SIMD operation, with a mismatch between the size of the multiplicands so each column matrix within a 256-bit lane shares the same square matrix.
 
@@ -19,28 +19,87 @@ Trivially, this can allow for within-a-lane bit shuffles, which can be used to e
 
 The more advantageous configuration is when multiple bits need to be combine using a OR/XOR. This can be used for error-correcting codes, cryptographic mixing/substitutions, and cumulative bitwise operations. Notably, an extended [16,11] Hamming code can be computed with a single instruction which is large enough to be efficient. Both configs will need to set the first operand to be zero if it is not immediately followed by a regular bitwise operation of the same type.
 
+![Permute Visualization](/resources/permute_visualization.PNG)
+
 Notably `VBMACOR16X16X16` can be used in 8-bit situations where `GF2P8AFFINEQB`'s XOR permutation needs to be a OR instead. It also has the advantage where a AND can be emulated by using the identity `a & b = ~(~a | ~b)`.
 
-The set bits within each 16-bit element determines the locations where one source bit will be included in the result, with the element's position corresponding to the bit's. So, if the second matrix element is ` 0x8101`, the second input bit will be ORed to output positions 0, 8, and 15. The neutral/identity matrix is comprised of the following `element[i] = 1 << i`. In contrast, this is transposed relative to `GF2P8AFFINEQB` and in a different endian order. Alternatively, you can use the following affine formula:
-
-bmacor16x16x16: `res.word[i].bit[j] = a.word[i].bit[j] | (b.word[i] & c.column[j] != 0)`
-
-bmacxor16x16x16: `res.word[i].bit[j] = a.word[i].bit[j] ^ parity(b.word[i] & c.column[j])`
+The set bits within each 16-bit element determines the locations where one source bit will be included in the result, with the element's position corresponding to the bit's. So, if the second matrix element is `0x8101`, the second input bit will be ORed to output positions 0, 8, and 15. The neutral/identity matrix is comprised of the following: `element[i] = 1 << i`. In contrast, this is transposed relative to `GF2P8AFFINEQB` and in a different endian order.
 
 ## Matrix transpose (matrix as a source)
 The matrix operand is treated as a 256-bit value, with the second operand selecting which 16-bit lanes will be OR/XORed reduced together. Which lanes are selected is based on set bits of the vector, with the 1st bit corresponding to the 1st lane, 2nd to the second, etc. Notably, multiple of these reductions can be performed at once and placed into separate lanes of the output.
 
-This can be used to performance a single instruction reduction like ` _mm256_reduce_or_epi16 ` to 16-bits or any larger multiples. For 512-bit vectors, they will first need to be manually reduced to 256-bits as they only operate within each 256-bit lane. You can also perform a conditional/masked reduction if the input bits are variable.
+![Transpose Visualization](/resources/transpose_visualization.PNG)
+
+This can be used to performance a single instruction reduction like `_mm256_reduce_or_epi16` to 16-bits or any larger multiples. For 512-bit vectors, they will first need to be manually reduced to 256-bits as it only operates within each 256-bit lane. You can also perform a conditional/masked reduction if the input bits are variable.
 
 Another application is combining a shuffle pattern like `shuffle16(x, IDX1) ^ shuffle16(x, IDX2)` into one operation. The indexes need to be converted to 16-bits (if not already), and then they should be raised to a power of 2, with zeroed lanes being set to zero. It might also be beneficial to combine a regular shuffle + XOR/OR with as well by taking advantage of the "addend" assuming the BMM instructions are fast enough. The shuffle can't cross any 256-bit lane.
 
 # Identities
-TODO
+
+- `BMAC#()`: Matrix multiply of either type.
+- `f()`: Represents a placeholder transformation.
+- `⊕`: Bitwise operation of the same type as the multiply.
+
+| - | - |
+| :--- | :--- |
+| `BMAC#(x, y, 0)` | `x` |
+| `BMAC#(x, 0, z)` | `x` |
+| `BMAC#(a, x, y) ⊕ b` | `BMAC#(a ⊕ b, x, y)` |
+| `BMAC#(x, y, z) ⊕ y` | `BMAC#(x, y, z ⊕ IDENTITY)` |
+| `BMAC#(x, y & splat16(C), z)` | `BMAC#(x, y, f(z, C))` |
+| `BMAC#(0, x1, y) ⊕ BMAC#(0, x2, y)` | `BMAC#(0, x1 ⊕ x2, y)` |
+| `BMAC#(0, x, y1) ⊕ BMAC#(0, x, y2)` | `BMAC#(0, x, y1 ⊕ y2)` |
+| `BMAC#(0, BMAC#(0, x, y1), y2)` | `BMAC#(0, x, f(y1, y2))` |
+| `shuffle16(x, idx)` | `BMAC#(0, x, exp2(idx))` |
+| `reduce16#(x)` | `BMAC#(0, scalar(0xffff), x)` |
+| `GF2P8AFFINEQB(x, y, imm8)` | `BMACXOR(splat8(imm8), x, f(y))` |
 
 # Documentation and Intrinsics
 
 ## Pseudo code
-TODO
+
+### AMD Instruction Reference
+#### VBMACOR16X16X16 srcdest, src2, src3 (ZMM Encoded Version)
+```text
+define matMulAddOR(a, b, c):
+    FOR i := 0 to 15:
+        FOR j := 0 to 15
+            reduction_bit := a.bit[16*i+j]
+            FOR k := 0 to 15:
+                reduction_bit |= b.bit[16*i+k] AND c.bit[16*k+j]
+            retmatrix.bit[16*i+j] := reduction_bit
+    return retmatrix
+
+SRCDEST[255:0] := matMulAddOR(SRCDEST[0:255], SRC2[0:255], SRC3[0:255])
+SRCDEST[511:256] := matMulAddOR(SRCDEST[511:256], SRC2[511:256], SRC3[511:256])
+SRCDEST[MAX_VL-1:512] := 0
+```
+
+#### VBMACXOR16X16X16 srcdest, src2, src3 (ZMM Encoded Version)
+```text
+define matMulAddXOR(a, b, c):
+    FOR i := 0 to 15:
+        FOR j := 0 to 15
+            reduction_bit := a.bit[16*i+j]
+            FOR k := 0 to 15:
+                reduction_bit ^= b.bit[16*i+k] AND c.bit[16*k+j]
+            retmatrix.bit[16*i+j] := reduction_bit
+    return retmatrix
+
+SRCDEST[255:0] := matMulAddXOR(SRCDEST[0:255], SRC2[0:255], SRC3[0:255])
+SRCDEST[511:256] := matMulAddXOR(SRCDEST[511:256], SRC2[511:256], SRC3[511:256])
+SRCDEST[MAX_VL-1:512] := 0
+```
+
+### Affine Index Notation
+The `column` attribute is a 1-bit vertical 'slice' from all lanes, similar to the movemask instructions. Parity determines if the count of set bits is even, or equivalently a XOR between all bits.
+
+| Instruction | Operation |
+| :--- | :--- |
+| `BMACOR16x16x16`  | `res.word[i].bit[j] = a.word[i].bit[j] \| (b.word[i] & c.column[j] != 0)` |
+| `BMACXOR16x16x16` | `res.word[i].bit[j] = a.word[i].bit[j] ^ parity(b.word[i] & c.column[j])` |
+
+
 
 ## Intrinsics
 
