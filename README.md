@@ -2,7 +2,9 @@
 
 AVX512 BMM is an instruction set extension that adds bit matrix multiplies and a bit reversal, which is expected to debut with the upcoming Zen 6. This was presumably intended for accelerating 1-bit LLMs however it appears to be more widely useful for generalized bit manipulation through the bit matrix multiples.
 
-There also exists the bit reversal within a byte boundary instruction `VBITREV`. It will likely have slightly better performance characteristics then the current GFNI method and doesn't rely on a constant operand from memory.
+This repository was created to act as a guide to the matrix multiplies, particularly regarding their bit manipulation applications. Additionally, efficient software implementations are included through the Intel Intrinsics, which may be useful for verifying their behaviour. The GFNI method is recommended for the XOR instruction due to its performance, assuming your hardware supports it.
+
+There also exists the "bit reversal within a byte boundary" instruction `VBITREV`. It will likely have slightly better performance characteristics then the current GFNI method and doesn't rely on a constant operand from memory.
 
 # Bit Matrix Multiply Applications
 
@@ -40,10 +42,11 @@ Another application is combining a shuffle pattern like `shuffle16(x, IDX1) ^ sh
 - `f()`: Represents a placeholder transformation.
 - `⊕`: Bitwise operation of the same type as the multiply.
 
-| - | - |
+| Input | Equivalent |
 | :--- | :--- |
 | `BMAC#(x, y, 0)` | `x` |
 | `BMAC#(x, 0, z)` | `x` |
+| `BMAC#(x, y, IDENTITY)` | `x ⊕ y` |
 | `BMAC#(a, x, y) ⊕ b` | `BMAC#(a ⊕ b, x, y)` |
 | `BMAC#(x, y, z) ⊕ y` | `BMAC#(x, y, z ⊕ IDENTITY)` |
 | `BMAC#(x, y & splat16(C), z)` | `BMAC#(x, y, f(z, C))` |
