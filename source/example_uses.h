@@ -123,7 +123,7 @@ short _xorReduce_i16x32(__m512i x) {
 }
 
 // Horizontal XOR between all 32-bit lanes
-long long _xorReduce_i32x8(__m256i x) {
+int _xorReduce_i32x8(__m256i x) {
     // Operation is 16-bit, so reduce the even/odd lanes separately
     const __m128i REDUCE_128 = _mm_setr_epi16(
         0b0101010101010101, 0b1010101010101010, 0,0,0,0,0,0
