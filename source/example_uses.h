@@ -150,6 +150,42 @@ __m256i _duplicateEven_i16x16(__m256i x) {
 
 
 
+// =========================
+//      Bit duplication
+// =========================
+
+// Duplicate the low order bits so each is double its width
+// E.g: `0bPONMLKJIHGFEDCBA => 0bHHGGFFEEDDCCBBAA`
+__m256i _bitDouble_i16x16(__m256i x) {
+    const __m256i BIT_EXPAND2X = _mm256_setr_epi16(
+        0b11<<0, 0b11<<2, 0b11<<4, 0b11<<6, 0b11<<8, 0b11<<10, 0b11<<12, 0b11<<14, 0,0,0,0,0,0,0,0
+    );
+
+    return _mm256_bmacxor16x16x16(_mm256_setzero_si256(), x, BIT_EXPAND2X);
+}
+
+// Duplicate the high order bits so each is double its width
+// E.g: `0bPONMLKJIHGFEDCBA => 0bPPOONNMMLLKKJJII`
+__m256i _bitDoubleHi_i16x16(__m256i x) {
+    const __m256i BIT_EXPAND2X = _mm256_setr_epi16(
+        0,0,0,0,0,0,0,0, 0b11<<0, 0b11<<2, 0b11<<4, 0b11<<6, 0b11<<8, 0b11<<10, 0b11<<12, 0b11<<14
+    );
+
+    return _mm256_bmacxor16x16x16(_mm256_setzero_si256(), x, BIT_EXPAND2X);
+}
+
+// Duplicate the low order bits so each is quadruple its width
+// E.g: `0bPONMLKJIHGFEDCBA => 0bDDDDCCCCBBBBAAAA`
+__m256i _bitQuadruple_i16x16(__m256i x) {
+    const __m256i BIT_EXPAND4X = _mm256_setr_epi16(
+        0b1111<<0, 0b1111<<4, 0b1111<<8, 0b1111<<12, 0,0,0,0,0,0,0,0,0,0,0,0 
+    );
+
+    return _mm256_bmacxor16x16x16(_mm256_setzero_si256(), x, BIT_EXPAND4X);
+}
+
+
+
 // ======================
 //      Hamming code
 // ======================
